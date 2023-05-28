@@ -1,7 +1,29 @@
 import { type NextPage } from "next";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { api } from "~/utils/api";
 
 const Todo: NextPage = () => {
+  const [todoInput, setTodoInput] = useState<string>("");
+  const { data: sessionData } = useSession();
+  const { data: todos, refetch: refetchTodos } = api.todo.todoList.useQuery(
+    undefined, // no input
+    { enabled: sessionData?.user !== undefined }
+  );
+  const createTodo = api.todo.addTodo.useMutation({
+    onSuccess: () => {
+      void refetchTodos();
+    },
+  });
+
+  const handleAddTodo = () => {
+    createTodo.mutate({
+      name: todoInput,
+    });
+    setTodoInput("");
+  };
+
   return (
     <div className="h-screen w-screen bg-gray-100 p-4">
       <Link
@@ -44,18 +66,27 @@ const Todo: NextPage = () => {
               </svg>
               <h4 className="ml-3 text-lg font-semibold">Todo List</h4>
             </div>
-            <TodoItem name="nau com" id={"1"} complete={false} />
-            <TodoItem name="rau bat" id={"2"} complete={false} />
-            <TodoItem name="giat quan ao" id={"3"} complete={false} />
-            <TodoItem name="learning English 1h" id={"4"} complete={false} />
-            <TodoItem name="ve sinh ca nhan" id={"1"} complete={true} />
+            {todos &&
+              todos.length > 0 &&
+              todos.map((todo) => (
+                <TodoItem
+                  key={todo.id}
+                  name={todo.name}
+                  id={todo.id}
+                  complete={todo.complete}
+                />
+              ))}
             <div className="mt-4 flex items-center justify-between gap-2">
               <input
                 className="ml-4 h-8 w-full flex-grow bg-transparent font-medium focus:outline-none"
                 type="text"
+                value={todoInput}
+                onChange={(e) => setTodoInput(e.target.value)}
                 placeholder="add a new task"
               />
               <button
+                onClick={handleAddTodo}
+                disabled={!todoInput}
                 type="button"
                 className="mr-2 inline-flex items-center rounded-full bg-blue-700 p-2.5 text-center text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
               >
@@ -88,10 +119,57 @@ const TodoItem: NextPage<{
   complete: boolean;
   id: string;
 }> = ({ name, complete, id }) => {
+  const [isDone, setIsDone] = useState<boolean>(complete);
+  const [debouncedValue, setDebouncedValue] = useState<boolean>(complete);
+  const { data: sessionData } = useSession();
+  const { refetch: refetchTodos } = api.todo.todoList.useQuery(
+    undefined, // no input
+    { enabled: sessionData?.user !== undefined }
+  );
+  const deleteTodo = api.todo.deleteTodo.useMutation({
+    onSuccess: () => {
+      void refetchTodos();
+    },
+  });
+  const updateTodoStatus = api.todo.updateTodoStatus.useMutation({
+    onSuccess: () => {
+      void refetchTodos();
+    },
+  });
+
+  const handelDeleteTodo = () => {
+    deleteTodo.mutate({
+      id: id,
+    });
+  };
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(isDone);
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [isDone]);
+
+  useEffect(() => {
+    updateTodoStatus.mutate({
+      id: id,
+      complete: debouncedValue,
+    });
+  }, [debouncedValue]);
+
   return (
     <div className="flex items-center justify-between">
-      <div>
-        <input className="hidden" type="checkbox" id={id} checked={complete} />
+      <div onClick={() => setIsDone((prev) => !prev)}>
+        <input
+          className="hidden"
+          type="checkbox"
+          id={id}
+          checked={isDone}
+          onChange={() => setIsDone((prev) => !prev)}
+        />
         <label
           className="flex h-10 cursor-pointer items-center rounded px-2 hover:bg-gray-100"
           htmlFor="task_5"
@@ -114,6 +192,7 @@ const TodoItem: NextPage<{
         </label>
       </div>
       <button
+        onClick={handelDeleteTodo}
         type="button"
         className="font-small rounded-lg bg-transparent px-5 py-2.5 text-sm text-red-500  hover:text-red-600"
       >
